@@ -48,7 +48,7 @@ func MakeRequest(clt *graphql.Client, content string) {
 	}
 }
 
-// Envcontent read data from a url stored in a env var.
+// EnvContent read data from a url stored in a env var.
 func EnvContent(env string) string {
 	// get url from env
 	url := os.Getenv(env)

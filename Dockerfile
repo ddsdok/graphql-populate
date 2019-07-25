@@ -1,5 +1,5 @@
 # Development Container
-FROM golang:1.11 AS builder
+FROM ddsdok/gotask AS builder
 
 # Add the script
 ADD . /go/src/populate

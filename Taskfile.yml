@@ -1,0 +1,16 @@
+# https://taskfile.dev
+
+version: '2'
+
+includes:
+  docker: ./taskset/DockerTasks.yml
+
+tasks:
+  default:
+    desc: List possible tasks to run.
+    cmds:
+      - echo "Available tasks ..."
+      - echo " - docker:login -> Login to Docker Hub."
+      - echo " - docker:create -> Create a Docker image."
+      - echo " - docker:push -> Push Docker image to Docker Hub repo."
+    silent: true

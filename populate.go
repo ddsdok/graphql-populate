@@ -1,93 +1,63 @@
 package main
 
 import (
-	"context"
-	"io/ioutil"
-	"log"
-	"net/http"
 	"os"
 	"strconv"
 	"time"
 
-	"github.com/machinebox/graphql"
+	"github.com/ddsgok/gql"
+	"github.com/ddsgok/log"
 )
 
 // AwaitClient test if the specified client can connect with its
-// source. On this script, the client will need to contain a Product
-// and a User table, so it queries for them. If the connection fails,
-// it tries again after 4 seconds, within a limit of tries.
-func AwaitClient(clt *graphql.Client) {
+// source. Make the check via query file at GQL_CHECK_TABLES url
+// If the connection fails, it tries again after 4 seconds, within a
+// limit of tries.
+func AwaitClient() (err error) {
 	// env controls the limit of connect tries.
-	awaitLimit, _ := strconv.Atoi(getenv("GRAPHQL_CHECK_TABLE_LIMIT", "50"))
+	envLimit := os.Getenv("GRAPHQL_CHECK_TABLE_LIMIT")
+
+	var awaitLimit int
+	if len(envLimit) > 0 {
+		if awaitLimit, err = strconv.Atoi(envLimit); err != nil {
+			return
+		}
+	} else {
+		awaitLimit = 50
+	}
 
 	for i := 0; i < awaitLimit; i++ {
-		if err := clt.Run(context.Background(), graphql.NewRequest(EnvContent("GQL_CHECK_TABLES")), nil); err != nil {
-			log.Print("Client not connecting, trying in 4 seconds")
+		if _, err = gql.ReadRequest(os.Getenv("GQL_CHECK_TABLES")).SetHeader("Cache-Control", "no-cache").Run(); err != nil {
+			log.Print("message: client not connecting, trying in 4 seconds")
 			time.Sleep(4 * time.Second)
 		} else {
+			err = nil
 			break
 		}
 	}
 
+	return
 }
 
-// MakeRequest receives a request content, uses client to make the
-// request. It adds no-cache options to request. If request fails,
-// it will crash the script.
-func MakeRequest(clt *graphql.Client, content string) {
-	// make a request and set headers
-	req := graphql.NewRequest(content)
-	req.Header.Set("Cache-Control", "no-cache")
-
-	// run it and check response
-	var res struct{}
-	if err := clt.Run(context.Background(), req, &res); err != nil {
-		log.Fatal(err)
-	} else {
-		log.Print(res)
-	}
-}
-
-// EnvContent read data from a url stored in a env var.
-func EnvContent(env string) string {
-	// get url from env
-	url := os.Getenv(env)
-
-	resp, err := http.Get(url)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer resp.Body.Close()
-
-	// read data from url
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return string(data)
+// Populate uses query file from GQL_POPULATE_FILE URL and runs it.
+// It adds no-cache options to request.
+func Populate() (err error) {
+	_, err = gql.ReadRequest(os.Getenv("GQL_POPULATE_FILE")).SetHeader("Cache-Control", "no-cache").Run()
+	return
 }
 
 func main() {
-	// Create a client
-	client := graphql.NewClient(os.Getenv("GRAPHQL_URL"))
+	gql.Connect()
+	defer gql.Disconnect()
 
 	// Test if Client alive...
-	AwaitClient(client)
+	if err := AwaitClient(); err != nil {
+		log.Fatal("fatal: awaiting client failed err=%s\n", err.Error())
+	}
 
 	// Populate, use upsert mutation to add items only if missing,
 	// to avoid multiple inserts, when restarting the docker setup.
-	MakeRequest(client, EnvContent("GQL_POPULATE_FILE"))
-}
-
-// getenv returns an env variable value, or the fallback value
-// specified.
-func getenv(key, fallback string) string {
-	value := os.Getenv(key)
-	if len(value) == 0 {
-		return fallback
+	if err := Populate(); err != nil {
+		log.Fatal("fatal: problem when populating err=%s\n", err.Error())
 	}
-
-	return value
 }
